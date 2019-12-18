@@ -71,11 +71,7 @@ class TransactionBuilder {
             //support for external signatures
 
             //check if a coinbase transaction
-            //if ( t._input === constant.COINBASE_ADDRESS_PUBLIC) ) {
-            //    this._id1 = t._id1
-            //} else {
-                this._key = t._key
-            //}
+            this._key = t._key
 
             this._signature = t._signature;
 
@@ -94,12 +90,8 @@ class TransactionBuilder {
         } else if ( t === undefined ) {
 
             this._key = {};
-            this._input = {address:"", type:"", amount: new BigNumber(0)};
+            this._input = {address:"", amount: new BigNumber(0), type: ""};
             this._transfers = [];
-            //this._conversion = "";
-            //this._amount = new BigNumber(0)
-            //this._from = ""
-            
         } else {
             throw new Error('Constructor expects either a previously assembled unsigned Transaction or no prameter');
         }
@@ -126,11 +118,6 @@ class TransactionBuilder {
             throw new Error("Attempting to add new input to a previously assembled transaction, expecting signatures only")
         }
 
-        //if this is setup as coinbase, prevent additional inputs
-        //if ( this._input === constant.COINBASE_ADDRESS_PUBLIC)) {
-        //    throw new Error('Cannot add an additional input to a coinbase transaction');
-        //}
-
         //if it isn't a private address and instead a public address then, the fs should be a public key      
         if (fctAddressUtil.isValidPrivateAddress(fs)) { //first check to see if valid private address
 
@@ -139,8 +126,6 @@ class TransactionBuilder {
 
             this._key = nacl.keyPair.fromSeed(fctAddressUtil.addressToKey(fs));
             this._input.address = fctAddressUtil.getPublicAddress(fs)
-            
-
         } else {
 
             // at this point the fs is should be the fa if we get this far
@@ -161,17 +146,6 @@ class TransactionBuilder {
         
         return this;
     }
-
-    /**
-     * Set up a coinbase input for the transaction, which mints tokens
-     * @method
-     * @param {(number|string|BigNumber)} amount - The integer amount of token units to send. Native JS Numbers (e.x. 123), strings (e.x. '123'), and BigNumbers(e.x. new BigNumber("9999999999999999") are allowed as long as they represent integers
-     * @returns {TransactionBuilder}
-     */
-//    coinbaseInput(amount) {
-//        if (this._input.length > 0) throw new Error('Input already specified');
-//        return this.input(constant.COINBASE_ADDRESS_PRIVATE, amount);
-//    }
 
     /**
      * Set up a Factoid address output for the transaction
@@ -250,16 +224,16 @@ class TransactionBuilder {
      * @returns {TransactionBuilder} - TransactionBuilder instance.
      */
     pkSignature(publicKey, signature) {
-        //if ( this._id1 !== undefined ) {
-        //    throw new Error("Attempting to add a signature for a regular transaction to a coinbase transaction.")
-        //}
         let pk = Buffer.from(publicKey, 'hex');
 
         let fa = fctAddressUtil.keyToPublicFctAddress(pk);
 
-        if ( this._input === fa ) {
+        if ( signature.length !== 64 ) {
+            throw new Error("Invalid Signature Length." )
+	}
+        if ( this._input.address === fa ) {
             this._key.publicKey = pk;
-            this._signature[0] = signature
+            this._signature = [signature]
         } else {
             throw new Error("Public Key (" + pk.toString('hex') + ") for provided signature does not match input adderess." )
         }
@@ -274,15 +248,14 @@ class TransactionBuilder {
     build() {
         if (this._input.address === undefined || this._input.amount === undefined || this._input.type === undefined ) throw new Error("Input must have an address, type, and amount specified");
         
-        //if (this._from.length !== 3 || this._to.length !== 3) throw new Error("Invalid asset conversion from/to pair specified");
-        
         if (!this._input.amount.isInteger() || this._input.amount.isLessThan(0)) throw new Error("Input amount must be a positive nonzero integer");
         
         if ( this._conversion === undefined   && this._transfers.length === 0 ) throw new Error("Either a conversion or transfer must be specified");
         
         if (this._conversion !== undefined ) {
-           //maybe check for list of valid assets here???
-            
+           if (this._conversion === this._input.type ) {
+               throw new Error("Conversion asset cannot be the same as the input asset.");
+	   }
            if (this._conversion.length === "" ) {
                throw new Error("Conversion string must be specified with input");
            }
@@ -290,6 +263,7 @@ class TransactionBuilder {
 
         if (this._transfers.length > 0 ) {
 	    let i = 0;
+	    let sum = new BigNumber(0);
             for ( i = 0; i < this._transfers.length; ++i ) {
                 if ( this._transfers[i] === undefined )  throw new Error("Malformed transfer entry");
 		    
@@ -304,8 +278,22 @@ class TransactionBuilder {
                 if (!this._transfers[i].amount.isInteger() || this._transfers[i].amount.isLessThan(0)) {
                     throw new Error("transfer amount must be a positive nonzero integer");
                 }
+
+                if ( this._input.address === this._transfers[i].address ) {
+                    throw new Error("input cannot be the same as the transfer address");
+		}
+		sum = sum.plus(this._transfers[i].amount);
             }
+
+	    if ( !this._input.amount.isEqualTo(sum) ) {
+                throw new Error("transfer amount must equal input amount");
+	    }
         }
+        if ( this._timestamp !== undefined ) {
+            if ( this._signature === undefined ) {
+                throw new Error('Missing signature: Inputs must have an associated signature')
+	    }
+	}
         
         if ( this._signature !== undefined ) {
             if ( this._signature[0] === undefined ) {

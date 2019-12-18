@@ -47,81 +47,27 @@ class Transaction {
      * @param {(TransactionBuilder|object)} builder - Either a TransactionBuilder object or a FAT-0 transaction object content
      */
     constructor(builder) {
-        if (builder instanceof TransactionBuilder) {
+        if (builder instanceof TransactionEntryBuilder) {
             
             let content = {}
             
-            this._input = builder._input;
-            
-            content.input = this._input;
+	    content.version = 1;
+            content.transactions = this._transactions;
 		
-            if ( builder._conversion !== undefined ) {
-                this._conversion = builder._conversion;
-                content.conversion = this._conversion;
-            }
-
-            if ( builder._transfers.length > 0 ) {
-                this._transfers = builder._transfers;
-                content.transfers = this._transfers;
-            }
-
-            if ( builder._metadata !== undefined ) {
-                this._metadata = builder._metadata;
-                content.metadata = this._metadata;
-            }
-
-            this._content = JSONBig.stringify(content); //snapshot the tx object
-
             const unixSeconds = Math.round(new Date().getTime() / 1000);
             this._timestamp = unixSeconds;
 
             this._extIds = [unixSeconds.toString()];
 
             this._tokenChainId = builder._tokenChainId;
-
-            if ( builder._signature !== undefined ) { //handle previously assembled transaction with added signatures
-
-                this._rcd = Buffer.concat([constant.RCD_TYPE_1, builder._key.publicKey]);
-
-                this._timestamp = builder._timestamp;
-                this._signature = builder._signature;
-                this._extIds = [this._timestamp.toString()];
-
-                this._extIds.push(this._rcd);
-                this._extIds.push(this._signature[0]);
-            
-            } else { //otherwise internally signed transaction
-                let sigIndexCounter = 0;
-                let valid = false;
-                const index = Buffer.from(sigIndexCounter.toString());
-                const timestamp = Buffer.from(unixSeconds.toString());
-                const chainId = Buffer.from(builder._tokenChainId, 'hex');
-                const content = Buffer.from(this._content);
-
-                sigIndexCounter++;
-                
-                if ( builder._key.secretKey !== undefined ) {
-                    this._signature = [nacl.detached(fctUtil.sha512(Buffer.concat([index, timestamp, chainId, content])), builder._key.secretKey)];
-                    this._rcd = Buffer.concat([constant.RCD_TYPE_1, Buffer.from(builder._key.publicKey)]);
-                    // if signatures aren't all valid then don't create external id's
-                    this._extIds.push(this._rcd);
-                    this._extIds.push(this._signature[0]);
-                } else {
-                    //need to store off key for signatures on second pass
-                    this._key = builder._key;
-		    this._signature = [undefined]
-                }
+            let i = 0;
+            for ( i = 0 ; i < content.transactions.length; ++i ) {
+                this._extIds.push(content.transactions[i].getRCD());
+                this._extIds.push(content.transactions[i].getSignature());
             }
+            
         } else { //from object
-            if (!builder.data.input) throw new Error("Valid FAT-2 transactions must include input");
-            if (!builder.data.conversion) throw new Error("Valid FAT-2 transactions must include conversion");
-            if (!builder.data.transfers) throw new Error("Valid FAT-2 transactions must include transaction");
-            this._input = builder.data.input;
-            this._transfers = builder.data.transfers;
-            this._conversion = builder.data.conversion;
-
-            this._metadata = builder.data.metadata;
-
+            if (!builder.data.transactions) throw new Error("Valid FAT-2 transactions must be included");
             this._entryhash = builder.entryhash;
             this._timestamp = builder.timestamp;
             this._pending = builder.pending;
@@ -135,37 +81,9 @@ class Transaction {
      * @method
      * @returns {string} - The transaction input address
      */
-    getInput() {
-        return this._input;
+    getTransaction(index) {
+        return this.transactions[index];
     }
-
-    /**
-     * Get the outputs address for the transaction 
-     * @method
-     * @returns {string|undefined} - The transaction's output address
-     */
-    getConversion() {
-        return this._conversion;
-    }
-    
-    /**
-     * Get the output asset to convert into 
-     * @method
-     * @returns { [{string,number}] | undefined } - The transaction's asset array of transfers
-     */
-    getTransfers() {
-        return this._transfers;
-    }
-
-    /**
-     * Get the metadata if present for the transaction if present
-     * @method
-     * @returns {*} - The transaction's metadata (if present, undefined if not)
-     */
-    getMetadata() {
-        return this._metadata;
-    }
-    
 
     /**
      * Get the factom-js Entry object representing the signed FAT transaction. Can be submitted directly to Factom
@@ -233,49 +151,21 @@ class Transaction {
     }
 
     /**
-     * Get the assembled ("marshalled") data that needs to be signed for the transaction for the given input address index
-     * @method
-     * @param inputIndex {number} - The input index to marshal to prep for hashing then signing
-     * @returns {Buffer} - Get the marshalled data that needs to be hashed then signed
-     */
-    getMarshalDataSig(inputIndex) {
-        return getMarshalDataSig(this, inputIndex);
-    }
-
-    /**
      * Validate all the signatures in the transaction against the input addresses
      * @method
      * @returns {boolean} returns true if signatures are valid, throws error otherwise.
      */
-    validateSignature() {
+    validateSignatures() {
         if ( this._signature === undefined || this._rcd === undefined ) {
             throw new Error("Transaction not signed")
         }
-        if ( this._signature[0] === undefined ) {
-            throw new Error("Transaction not signed")
-	}
         
         if( !nacl.detached.verify(fctUtil.sha512(this.getMarshalDataSig(0)), this._signature[0], Buffer.from(this._rcd, 1).slice(1)) ) {
-            return false;
+            throw new Error("Invalid Transaction Signature for input " + i.toString())
         }
         
         return true;
     }
-}
-
-/**
- * Get the assembled ("marshalled") data that needs to be signed for the transaction for the given input address index
- * @method
- * @param tx {Transaction} - The transaction to get the marshalled data to sign from
- * @param inputIndex {number} - The input index to marshal to prep for hashing then signing
- * @returns {Buffer} - Get the marshalled data that needs to be hashed then signed
- */
-function getMarshalDataSig(tx, inputIndex) {
-    const index = Buffer.from(inputIndex.toString());
-    const timestamp = Buffer.from(tx._timestamp.toString());
-    const chainId = Buffer.from(tx._tokenChainId, 'hex');
-    const content = Buffer.from(tx._content);
-    return Buffer.concat([index,timestamp,chainId,content]);
 }
 
 module.exports = Transaction;
