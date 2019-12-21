@@ -60,41 +60,12 @@ const util = require('../util');
 class TransactionBuilder {
 
     /**
-     * @constructor
-     * @param {Transaction|string} Transaction or tokenChainId - Unsigned transaction or 64 character Factom Chain ID of the token to build the transaction for
+     * @constructor to build the transaction for
      */
-    constructor(t) {
-        
-        this._tokenChainId = 'cffce0f409ebba4ed236d49d89c70e4bd1f1367d86402a3363366683265a242d'
-        
-        if ( t instanceof (require('./Transaction')) ) {
-            //support for external signatures
-
-            //check if a coinbase transaction
-            this._key = t._key
-
-            this._signature = t._signature;
-
-            this._input = t._input;
-            this._transfers = t._transfers
-
-            if ( t._conversion !== undefined ) {
-                this._conversion = t._conversion
-            }
-            
-            this._timestamp = t._timestamp;
-
-            if ( t._metadata !== undefined ) {
-                this._metadata = t._metadata;
-            }
-        } else if ( t === undefined ) {
-
-            this._key = {};
-            this._input = {address:"", amount: new BigNumber(0), type: ""};
-            this._transfers = [];
-        } else {
-            throw new Error('Constructor expects either a previously assembled unsigned Transaction or no prameter');
-        }
+    constructor() {
+        this._key = {};
+        this._input = {address:"", amount: new BigNumber(0), type: ""};
+        this._transfers = [];
     }
 
     /**
@@ -217,30 +188,6 @@ class TransactionBuilder {
     }
 
     /**
-     * Add a public key and signature to the transaction. This is used only in the case of externally signed transactions (useful for hardware wallets).
-     * Public Key's /signatures need to be added in the same order as their corresponding inputs.
-     * @param {string|Array|Buffer} publicKey - FCT public key as hex string, uint8array, or buffer
-     * @param {Buffer} signature - Signature 
-     * @returns {TransactionBuilder} - TransactionBuilder instance.
-     */
-    pkSignature(publicKey, signature) {
-        let pk = Buffer.from(publicKey, 'hex');
-
-        let fa = fctAddressUtil.keyToPublicFctAddress(pk);
-
-        if ( signature.length !== 64 ) {
-            throw new Error("Invalid Signature Length." )
-	}
-        if ( this._input.address === fa ) {
-            this._key.publicKey = pk;
-            this._signature = [signature]
-        } else {
-            throw new Error("Public Key (" + pk.toString('hex') + ") for provided signature does not match input adderess." )
-        }
-        return this;
-    }
-
-    /**
      * Build the transaction
      * @method
      * @returns {Transaction}
@@ -255,25 +202,25 @@ class TransactionBuilder {
         if (this._conversion !== undefined ) {
            if (this._conversion === this._input.type ) {
                throw new Error("Conversion asset cannot be the same as the input asset.");
-	   }
+           }
            if (this._conversion.length === "" ) {
                throw new Error("Conversion string must be specified with input");
            }
         }
 
         if (this._transfers.length > 0 ) {
-	    let i = 0;
-	    let sum = new BigNumber(0);
+            let i = 0;
+            let sum = new BigNumber(0);
             for ( i = 0; i < this._transfers.length; ++i ) {
                 if ( this._transfers[i] === undefined )  throw new Error("Malformed transfer entry");
-		    
+    
                 if (this._transfers[i].address === undefined ) {
                     throw new Error("transfer address must be of type string");
                 }
                 
                 if (this._transfers[i].amount === undefined ) {
                     throw new Error("transfer amount must be specified");
-		}
+                }
 
                 if (!this._transfers[i].amount.isInteger() || this._transfers[i].amount.isLessThan(0)) {
                     throw new Error("transfer amount must be a positive nonzero integer");
@@ -281,26 +228,16 @@ class TransactionBuilder {
 
                 if ( this._input.address === this._transfers[i].address ) {
                     throw new Error("input cannot be the same as the transfer address");
-		}
-		sum = sum.plus(this._transfers[i].amount);
+                }
+    
+            sum = sum.plus(this._transfers[i].amount);
             }
 
-	    if ( !this._input.amount.isEqualTo(sum) ) {
+            if ( !this._input.amount.isEqualTo(sum) ) {
                 throw new Error("transfer amount must equal input amount");
-	    }
-        }
-        if ( this._timestamp !== undefined ) {
-            if ( this._signature === undefined ) {
-                throw new Error('Missing signature: Inputs must have an associated signature')
-	    }
-	}
-        
-        if ( this._signature !== undefined ) {
-            if ( this._signature[0] === undefined ) {
-                throw new Error('Missing signature: Inputs must have an associated signature')
             }
         }
-
+       
         return new (require('./Transaction'))(this);
     }
 }

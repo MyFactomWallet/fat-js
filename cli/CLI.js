@@ -493,3 +493,4 @@ module.exports = {
 
 const FAT0CLI = require('../0/CLI').CLI;
 const FAT1CLI = require('../1/CLI').CLI;
+const FAT2CLI = require('../2/CLI').CLI;

@@ -48,70 +48,23 @@ class Transaction {
      */
     constructor(builder) {
         if (builder instanceof TransactionBuilder) {
-            
-            let content = {}
-            
             this._input = builder._input;
-            
-            content.input = this._input;
-		
+            		
             if ( builder._conversion !== undefined ) {
                 this._conversion = builder._conversion;
-                content.conversion = this._conversion;
             }
 
             if ( builder._transfers.length > 0 ) {
                 this._transfers = builder._transfers;
-                content.transfers = this._transfers;
             }
 
             if ( builder._metadata !== undefined ) {
                 this._metadata = builder._metadata;
-                content.metadata = this._metadata;
             }
 
-            this._content = JSONBig.stringify(content); //snapshot the tx object
-
-            const unixSeconds = Math.round(new Date().getTime() / 1000);
-            this._timestamp = unixSeconds;
-
-            this._extIds = [unixSeconds.toString()];
-
-            this._tokenChainId = builder._tokenChainId;
-
-            if ( builder._signature !== undefined ) { //handle previously assembled transaction with added signatures
-
-                this._rcd = Buffer.concat([constant.RCD_TYPE_1, builder._key.publicKey]);
-
-                this._timestamp = builder._timestamp;
-                this._signature = builder._signature;
-                this._extIds = [this._timestamp.toString()];
-
-                this._extIds.push(this._rcd);
-                this._extIds.push(this._signature[0]);
+            this._key = builder._key;
+            this._rcd = Buffer.concat([constant.RCD_TYPE_1, Buffer.from(builder._key.publicKey)]);
             
-            } else { //otherwise internally signed transaction
-                let sigIndexCounter = 0;
-                let valid = false;
-                const index = Buffer.from(sigIndexCounter.toString());
-                const timestamp = Buffer.from(unixSeconds.toString());
-                const chainId = Buffer.from(builder._tokenChainId, 'hex');
-                const content = Buffer.from(this._content);
-
-                sigIndexCounter++;
-                
-                if ( builder._key.secretKey !== undefined ) {
-                    this._signature = [nacl.detached(fctUtil.sha512(Buffer.concat([index, timestamp, chainId, content])), builder._key.secretKey)];
-                    this._rcd = Buffer.concat([constant.RCD_TYPE_1, Buffer.from(builder._key.publicKey)]);
-                    // if signatures aren't all valid then don't create external id's
-                    this._extIds.push(this._rcd);
-                    this._extIds.push(this._signature[0]);
-                } else {
-                    //need to store off key for signatures on second pass
-                    this._key = builder._key;
-		    this._signature = [undefined]
-                }
-            }
         } else { //from object
             if (!builder.data.input) throw new Error("Valid FAT-2 transactions must include input");
             if (!builder.data.conversion) throw new Error("Valid FAT-2 transactions must include conversion");
@@ -149,6 +102,15 @@ class Transaction {
     }
     
     /**
+     * Returns a buffer of the RCD 
+     * @method
+     * @returns {Buffer} - The rcd associated with the input address
+     */
+    getRCD() {
+        return this._rcd;
+    }
+    
+    /**
      * Get the output asset to convert into 
      * @method
      * @returns { [{string,number}] | undefined } - The transaction's asset array of transfers
@@ -165,97 +127,25 @@ class Transaction {
     getMetadata() {
         return this._metadata;
     }
-    
 
-    /**
-     * Get the factom-js Entry object representing the signed FAT transaction. Can be submitted directly to Factom
-     * @method
-     * @see https://github.com/PaulBernier/factomjs/blob/master/src/entry.js
-     * @returns {Entry} - Get the Factom-JS Factom entry representation of the transaction, including extids & other signatures
-     * @example
-     * const {FactomCli, Entry, Chain} = require('factom');
-     const cli = new FactomCli(); // Default factomd connection to localhost:8088 and walletd connection to localhost:8089
-
-     const tx = new TransactionBuilder()
-     .input("pFCT", "Fs1q7FHcW4Ti9tngdGAbA3CxMjhyXtNyB1BSdc8uR46jVUVCWtbJ", 150)
-     .convert("PEG")
-     .build();
-
-     //"cast" the entry object to prevent compatibility issues
-     const entry = Entry.builder(tx.getEntry()).build();
-
-     await cli.add(entry, "Es32PjobTxPTd73dohEFRegMFRLv3X5WZ4FXEwNN8kE2pMDfeMym"); //commit the transaction entry to the token chain
-     */
-    getEntry() {
-        if (!this._tokenChainId) throw new Error('Can only get a valid Factom entry for a transaction built using TransactionBuilder');
-
-        return Entry.builder()
-            .chainId(this._tokenChainId)
-            .extIds(this._extIds, 'utf8')
-            .content(this._content, 'utf8')
-            .build();
+    sign(hashed) {
+        let signature = undefined
+        if ( this._key.secretKey !== undefined ) {
+             signature = nacl.detached(hashed, this._key.secretKey);
+        } 
+        return signature
     }
-
-    /**
-     * Get the token chain ID for this transaction
-     * @method
-     * @returns {string} - The chain ID of the pegnet 
-     */
-    getChainId() {
-        return this._tokenChainId;
-    }
-
-    /**
-     * Get the Factom entryhash of the transaction.
-     * @method
-     * @returns {string} - The entryhash of the transaction. Only defined if the Transaction was constructed from an object
-     */
-    getEntryhash() {
-        return this._entryhash;
-    }
-
-    /**
-     * Get the unix timestamp of when the Transaction was signed (locally built transactions) or committed to Factom (from RPC response JSON)
-     * @method
-     * @returns {number} - The integer unix timestamp
-     */
-    getTimestamp() {
-        return this._timestamp;
-    }
-
-    /**
-     * Get the pending status of the transaction at the time of request.
-     * @method
-     * @returns {boolean} - The pending status of the entry in the daemon
-     */
-    getPending() {
-        return this._pending || false;
-    }
-
-    /**
-     * Get the assembled ("marshalled") data that needs to be signed for the transaction for the given input address index
-     * @method
-     * @param inputIndex {number} - The input index to marshal to prep for hashing then signing
-     * @returns {Buffer} - Get the marshalled data that needs to be hashed then signed
-     */
-    getMarshalDataSig(inputIndex) {
-        return getMarshalDataSig(this, inputIndex);
-    }
-
     /**
      * Validate all the signatures in the transaction against the input addresses
      * @method
      * @returns {boolean} returns true if signatures are valid, throws error otherwise.
      */
-    validateSignature() {
-        if ( this._signature === undefined || this._rcd === undefined ) {
+    validateSignature(hashed, signature) {
+        if ( signature === undefined || this._rcd === undefined ) {
             throw new Error("Transaction not signed")
         }
-        if ( this._signature[0] === undefined ) {
-            throw new Error("Transaction not signed")
-	}
         
-        if( !nacl.detached.verify(fctUtil.sha512(this.getMarshalDataSig(0)), this._signature[0], Buffer.from(this._rcd, 1).slice(1)) ) {
+        if( !nacl.detached.verify(hashed, signature, Buffer.from(this._rcd, 1).slice(1)) ) {
             return false;
         }
         
@@ -263,19 +153,5 @@ class Transaction {
     }
 }
 
-/**
- * Get the assembled ("marshalled") data that needs to be signed for the transaction for the given input address index
- * @method
- * @param tx {Transaction} - The transaction to get the marshalled data to sign from
- * @param inputIndex {number} - The input index to marshal to prep for hashing then signing
- * @returns {Buffer} - Get the marshalled data that needs to be hashed then signed
- */
-function getMarshalDataSig(tx, inputIndex) {
-    const index = Buffer.from(inputIndex.toString());
-    const timestamp = Buffer.from(tx._timestamp.toString());
-    const chainId = Buffer.from(tx._tokenChainId, 'hex');
-    const content = Buffer.from(tx._content);
-    return Buffer.concat([index,timestamp,chainId,content]);
-}
 
 module.exports = Transaction;

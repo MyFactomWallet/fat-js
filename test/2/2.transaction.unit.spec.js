@@ -7,7 +7,7 @@ const BigNumber = require('bignumber.js');
 const fctIdentityCrypto = require('factom-identity-lib/src/crypto');
 const nacl = require('tweetnacl/nacl-fast').sign;
 const TransactionBuilder = require('../../2/TransactionBuilder');
-
+const TransactionBatchBuilder = require('../../2/TransactionBatchBuilder');
 
         let tx = new TransactionBuilder()
             .input("pFCT", "Fs1PkAEbmo1XNangSnxmKqi1PN5sVDbQ6zsnXCsMUejT66WaDgkm", 150)
@@ -28,7 +28,15 @@ const TransactionBuilder = require('../../2/TransactionBuilder');
 
         assert.isDefined(tx.getConversion());
 
-	const meta = {type: 'fat-js test run', timestamp: new Date().getTime()};
+        let tb = new TransactionBatchBuilder()
+                        .transaction(tx)
+                        .build()
+
+        //tb = new TransactionBatchBuilder(tb)
+        //                .pkSignature(tx1, signature)
+        //                .build()
+       
+        const meta = {type: 'fat-js test run', timestamp: new Date().getTime()};
 
         tx = new TransactionBuilder()
             .input("pFCT", "Fs1PkAEbmo1XNangSnxmKqi1PN5sVDbQ6zsnXCsMUejT66WaDgkm", 150)
@@ -36,6 +44,9 @@ const TransactionBuilder = require('../../2/TransactionBuilder');
             .metadata(meta)
             .build();
 
+        tb = new TransactionBatchBuilder()
+                .transaction(tx)
+                .build()
 describe('Transaction Unit', function () {
 
 
@@ -72,7 +83,7 @@ describe('Transaction Unit', function () {
         assert.isObject(tx.getMetadata());
         assert.strictEqual(JSON.stringify(tx.getMetadata()), JSON.stringify(meta));
         assert.isArray(tx.getTransfers());
-
+/*
         //test signing with private key externally, this will simulate an external signature such as from the Ledger
         let sk = fctAddrUtils.addressToKey("Fs1PkAEbmo1XNangSnxmKqi1PN5sVDbQ6zsnXCsMUejT66WaDgkm");
         let key = nacl.keyPair.fromSeed(sk);
@@ -131,7 +142,7 @@ describe('Transaction Unit', function () {
 
         //should have good signature
         assert.isTrue(txgood.validateSignature());
-
+*/
 
         //test both transfer & conversion provided (transfer first) 
         assert.throws(() => new TransactionBuilder()

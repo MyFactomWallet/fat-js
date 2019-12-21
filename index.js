@@ -14,6 +14,12 @@ module.exports = Object.assign({},
             Transaction: require('./1/Transaction'),
             IssuanceBuilder: require('./1/IssuanceBuilder'),
             Issuance: require('./1/Issuance')
+        },
+        FAT2: {
+            TransactionBuilder: require('./2/TransactionBuilder'),
+            Transaction: require('./2/Transaction'),
+            TransactionBatchBuilder : require('./2/TransactionBatchBuilder'),
+            TransactionBatch : require('./2/TransactionBatch')
         }
     }
 );

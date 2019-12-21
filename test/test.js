@@ -6,6 +6,11 @@ describe('Util', () => {
     require('./util/util.unit.spec');
 });
 
+describe('FAT-2', () => {
+    require('./2/2.transaction.unit.spec');
+});
+
+/*
 describe('CLI', () => {
     require('./cli/cli.unit.spec');
     require('./cli/cli.integration.spec');
@@ -22,3 +27,4 @@ describe('FAT-1', () => {
     require('./1/1.issuance.unit.spec');
     require('./1/1.cli.integration.spec');
 });
+*/
