@@ -4,6 +4,7 @@ const fctAddressUtil = require('factom/src/addresses');
 const fctIdentityUtil = require('factom-identity-lib/src/validation');
 const BigNumber = require('bignumber.js');
 const util = require('../util');
+const Transaction = require('./Transaction')
 /**
  * Build & Model A FAT-0 Transaction
  * @alias TransactionBuilder0
@@ -57,15 +58,24 @@ const util = require('../util');
  * .build();
  *
  */
-class TransactionBuilder {
+class TransactionBatchBuilder {
 
     /**
      * @constructor
      * @param {Transaction|string} Transaction or tokenChainId - Unsigned transaction or 64 character Factom Chain ID of the token to build the transaction for
      */
-    constructor() {
-            this._tokenChainId = 'cffce0f409ebba4ed236d49d89c70e4bd1f1367d86402a3363366683265a242d'
+    constructor(t) {
+        //probably should pass in via contant so it can be changed between test net and main net
+        this._tokenChainId = 'cffce0f409ebba4ed236d49d89c70e4bd1f1367d86402a3363366683265a242d'
+        this._version = 1;
+        
+        if ( t instanceof (require('./TransactionBatch')) ) {
+            this._transactions = t._transactions;
+            this._signatures = t._signatures
+            this._timestamp = t._timestamp
+        } else {
             this._transactions = [];
+        }
     }
 
     /**
@@ -76,24 +86,73 @@ class TransactionBuilder {
      * @param {(number|string|BigNumber)} amount - The integer amount of token units to send. Native JS Numbers (e.x. 123), strings (e.x. "123"), and BigNumbers(e.x. new BigNumber("9999999999999999") are allowed as long as they represent integers
      * @returns {TransactionBuilder}
      */
-    transaction(txn) {
-	    //need to verify signature
-        if ( !txn.isSignatureValid() ) throw new Error('Transaction is not signed or signature invalid');
+    transaction(tx) {
+	
+        this._transactions.push(tx);
        
-        this._transactions.push(txn); 
-        
         return this;
     }
 
+
+    /**
+     * Assign a signature to the transaction. This is used only in the case of externally signed transactions (useful for hardware wallets).
+     * @param {tx} transaction - transaction that contains the address associated with the signature
+     * @param {Buffer} signature - Signature 
+     * @returns {TransactionBuilder} - TransactionBuilder instance.
+     */
+    pkSignature(tx, signature) {
+        if ( t instanceof Transaction ) {
+            let idx = 0
+            let obj = this._transactions.find((o,i) => { 
+                if (o.getInput().address === tx.getInput().address ) {
+                    idx = i
+                    return true
+                }
+                return false
+            })
+            
+            if ( obj !== undefined ) {
+                this._signatures[idx] = signature 
+            } else {
+                throw new Error("Transaction " + tx.getInput().address + " not found, so signature cannot be assigned.")
+            }
+        }
+        return this
+    }
+
+    
     /**
      * Build the transaction
      * @method
      * @returns {Transaction}
      */
     build() {
-        return new (require('./TransactionEntry'))(this);
+        if (this._transactions.length === 0 ) {
+           throw new Error("No Transactions Specified.");
+        }
+        
+        if ( this._signatures !== undefined ) {
+            if ( this._signatures.length !== this._transactions.length ) {
+                throw new Error("Expecting the same number of signatures as there are number of transactions")
+            }
+        }
+
+        let i = 0;
+        for ( i = 0; i < this._transactions.length; ++i ) {
+            if ( this._transactions[i] === undefined ) {
+                throw new Error("Malformed transaction" + i.toString());
+            }
+        
+            if ( this._signatures !== undefined ) {
+                if ( this._signatures[i].find(s => s === undefined) ) {
+                    throw new Error("Expecting signature for transaction index "+ i.toString() + ". No signature found." );
+                }
+            }
+        }
+
+        return new (require('./TransactionBatch'))(this);
     }
 }
 
 
-module.exports = TransactionBuilder;
+module.exports = TransactionBatchBuilder;

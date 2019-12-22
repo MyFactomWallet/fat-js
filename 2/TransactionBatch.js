@@ -3,7 +3,7 @@ const nacl = require('tweetnacl/nacl-fast').sign;
 const {Entry} = require('factom');
 const fctUtil = require('factom/src/util');
 const fctIdentityCrypto = require('factom-identity-lib/src/crypto');
-const TransactionBuilder = require('./TransactionBuilder');
+const TransactionBatchBuilder = require('./TransactionBatchBuilder');
 const JSONBig = require('json-bigint')({strict: true});
 const BigNumber = require('bignumber.js');
 
@@ -40,30 +40,77 @@ const BigNumber = require('bignumber.js');
  *
  * tx.getEntryHash(); // => "68f3ca3a8c9f7a0cb32dc9717347cb179b63096e051a60ce8be9c292d29795af"
  */
-class Transaction {
+class TransactionBatch {
 
     /**
      * @constructor
      * @param {(TransactionBuilder|object)} builder - Either a TransactionBuilder object or a FAT-0 transaction object content
      */
     constructor(builder) {
-        if (builder instanceof TransactionEntryBuilder) {
+        if (builder instanceof TransactionBatchBuilder) {
+            this._transactions = builder._transactions
+            this._tokenChainId = builder._tokenChainId
             
-            let content = {}
-            
-	    content.version = 1;
-            content.transactions = this._transactions;
-		
             const unixSeconds = Math.round(new Date().getTime() / 1000);
             this._timestamp = unixSeconds;
 
             this._extIds = [unixSeconds.toString()];
+            
+            if ( builder._signatures !== undefined ) {
+                this._rcds = [] 
+                builder._transactions.forEach(tx => {
+                    this._rcds.push(tx.getRCD())
+                });
+            
+                if (this._rcds.length !== builder._signatures.length) {
+                    throw new Error("Missmatch between rcds and the number of signatures provided");
+                }
 
-            this._tokenChainId = builder._tokenChainId;
-            let i = 0;
-            for ( i = 0 ; i < content.transactions.length; ++i ) {
-                this._extIds.push(content.transactions[i].getRCD());
-                this._extIds.push(content.transactions[i].getSignature());
+                this._content = builder._content
+                this._timestamp = builder._timestamp;
+                this._signatures = builder._signatures;
+                this._extIds = [this._timestamp.toString()];
+                
+                for (let i = 0; i < this._rcds.length; i++) {
+                    this._extIds.push(this._rcds[i]);
+                    this._extIds.push(this._signatures[i]);
+                }
+  
+            } else {
+                //potential first pass.
+                let content = { 'version': 1, 'transactions': []}; //snapshot the tx object
+
+                this._transactions.forEach(tx => {
+                    content.transactions.push(tx)
+                })
+            
+                this._content = JSONBig.stringify(content)
+            
+                let sigIndexCounter = 0;
+                let valid = true;
+                this._signatures = []
+                builder._transactions.forEach( (tx,idx) => {   
+                    const index = Buffer.from(idx.toString());
+                    const timestamp = Buffer.from(this._timestamp.toString());
+                    const chainId = Buffer.from(this._tokenChainId, 'hex');
+                    const content = Buffer.from(this._content);
+                    let sig = tx.sign(fctUtil.sha512(Buffer.concat([index,timestamp,chainId,this._content])));
+                    if ( sig === undefined ) {
+                        valid = false;
+                    }
+                    this._signatures.push(sig)
+                })
+                if ( valid ) { //no second pass is required so populate the extId's here...
+                    this._rcds = [] 
+                    builder._transactions.forEach(tx => {
+                        this._rcds.push(tx.getRCD())
+                    });
+                    
+                    for (let i = 0; i < this._rcds.length; i++) {
+                        this._extIds.push(this._rcds[i]);
+                        this._extIds.push(this._signatures[i]);
+                    }
+                }
             }
             
         } else { //from object
@@ -82,8 +129,9 @@ class Transaction {
      * @returns {string} - The transaction input address
      */
     getTransaction(index) {
-        return this.transactions[index];
-    }
+        return this._content.transactions[index];
+    } 
+    
 
     /**
      * Get the factom-js Entry object representing the signed FAT transaction. Can be submitted directly to Factom
@@ -151,6 +199,16 @@ class Transaction {
     }
 
     /**
+     * Get the assembled ("marshalled") data that needs to be signed for the transaction for the given input address index
+     * @method
+     * @param inputIndex {number} - The input index to marshal to prep for hashing then signing
+     * @returns {Buffer} - Get the marshalled data that needs to be hashed then signed
+     */
+    getMarshalDataSig(inputIndex) {
+        return getMarshalDataSig(this, inputIndex);
+    }
+
+    /**
      * Validate all the signatures in the transaction against the input addresses
      * @method
      * @returns {boolean} returns true if signatures are valid, throws error otherwise.
@@ -159,13 +217,28 @@ class Transaction {
         if ( this._signature === undefined || this._rcd === undefined ) {
             throw new Error("Transaction not signed")
         }
-        
-        if( !nacl.detached.verify(fctUtil.sha512(this.getMarshalDataSig(0)), this._signature[0], Buffer.from(this._rcd, 1).slice(1)) ) {
+        this._transactions.forEach((tx,i) => {
+            if( !tx.validateSignature(fctUtil.sha512(this.getMarshalDataSig(i)), this._signature[i]) ) {
             throw new Error("Invalid Transaction Signature for input " + i.toString())
         }
-        
+        })
         return true;
     }
 }
 
-module.exports = Transaction;
+/**
+ * Get the assembled ("marshalled") data that needs to be signed for the transaction for the given input address index
+ * @method
+ * @param tbe {TransactionBufferEetry} - The transaction to get the marshalled data to sign from
+ * @param inputIndex {number} - The input index to marshal to prep for hashing then signing
+ * @returns {Buffer} - Get the marshalled data that needs to be hashed then signed
+ */
+function getMarshalDataSig(tb, inputIndex) {
+    const index = Buffer.from(inputIndex.toString());
+    const timestamp = Buffer.from(tb._timestamp.toString());
+    const chainId = Buffer.from(tb._tokenChainId, 'hex');
+    const content = Buffer.from(tb._content);
+    return Buffer.concat([index,timestamp,chainId,content]);
+}
+
+module.exports = TransactionBatch;
