@@ -13,7 +13,8 @@ const TransactionBatchBuilder = require('../../2/TransactionBatchBuilder');
             .input("pFCT", "Fs1PkAEbmo1XNangSnxmKqi1PN5sVDbQ6zsnXCsMUejT66WaDgkm", 150)
             .conversion("PEG")
             .build();
-            console.log(tx.getInput().amount.toNumber());
+console.log("Conversion")
+            console.log(tx.getMarshalDataSig(0));
         assert.isTrue(tx.getConversion()!==undefined);
         assert.isDefined(tx.getInput());
         assert.isObject(tx.getInput());
@@ -47,6 +48,8 @@ const TransactionBatchBuilder = require('../../2/TransactionBatchBuilder');
         tb = new TransactionBatchBuilder()
                 .transaction(tx)
                 .build()
+        console.log(tx.getMarshalDataSig(0));
+
 describe('Transaction Unit', function () {
 
 
