@@ -1,3 +1,7 @@
+describe('FAT-2', () => {
+    require('./2/2.transaction.unit.spec');
+});
+/*
 describe('Constant', () => {
     require('./constant/constant');
 });

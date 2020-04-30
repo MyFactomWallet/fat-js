@@ -9,7 +9,7 @@ const Transaction = require('./Transaction')
  * Build & Model A FAT-0 Transaction
  * @alias TransactionBuilder0
  * @public
- * @class
+ * @classf
  *
  * @example
  * const TransactionBuilder = require('fat-js').FAT0.TransactionBuilder
@@ -73,8 +73,11 @@ class TransactionBatchBuilder {
             this._transactions = t._transactions;
             this._signatures = t._signatures
             this._timestamp = t._timestamp
+            this._keys = t.keys;
         } else {
             this._transactions = [];
+            //this._keys = [];
+            //this._signatures = [];
         }
     }
 
@@ -100,7 +103,7 @@ class TransactionBatchBuilder {
      * @param {Buffer} signature - Signature 
      * @returns {TransactionBuilder} - TransactionBuilder instance.
      */
-    pkSignature(tx, signature) {
+    pkSignature(tx, publicKey, signature) {
         if ( t instanceof Transaction ) {
             let idx = 0
             let obj = this._transactions.find((o,i) => { 
@@ -113,6 +116,7 @@ class TransactionBatchBuilder {
             
             if ( obj !== undefined ) {
                 this._signatures[idx] = signature 
+                this._keys[idx] = key;
             } else {
                 throw new Error("Transaction " + tx.getInput().address + " not found, so signature cannot be assigned.")
             }

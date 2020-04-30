@@ -58,8 +58,18 @@ class TransactionBatch {
             
             if ( builder._signatures !== undefined ) {
                 this._rcds = [] 
-                builder._transactions.forEach(tx => {
-                    this._rcds.push(tx.getRCD())
+                builder._transactions.forEach( (tx,idx) => {
+                    if ( tx.getRCD() !== undefined )
+                    {
+                        this._rcds.push(tx.getRCD())
+                    }
+                    else
+                    {
+                        if ( builder._keys[idx] === undefined ) {
+                            throw new Error("Public key not specified with signature");
+                        }
+                        this._rcds.push(Buffer.concat([constant.RCD_TYPE_1, Buffer.from(builder._keys[idx])]));
+                    }
                 });
             
                 if (this._rcds.length !== builder._signatures.length) {
@@ -81,7 +91,7 @@ class TransactionBatch {
                 let content = { 'version': 1, 'transactions': []}; //snapshot the tx object
 
                 this._transactions.forEach(tx => {
-                    content.transactions.push(tx)
+                    content.transactions.push(tx.getContent())
                 })
             
                 this._content = JSONBig.stringify(content)
@@ -90,11 +100,13 @@ class TransactionBatch {
                 let valid = true;
                 this._signatures = []
                 builder._transactions.forEach( (tx,idx) => {   
+
                     const index = Buffer.from(idx.toString());
                     const timestamp = Buffer.from(this._timestamp.toString());
                     const chainId = Buffer.from(this._tokenChainId, 'hex');
                     const content = Buffer.from(this._content);
-                    let sig = tx.sign(fctUtil.sha512(Buffer.concat([index,timestamp,chainId,this._content])));
+                    let sig = tx.sign(fctUtil.sha512(Buffer.concat([index,timestamp,chainId,content])));
+                    
                     if ( sig === undefined ) {
                         valid = false;
                     }
@@ -218,7 +230,7 @@ class TransactionBatch {
             throw new Error("Transaction not signed")
         }
         this._transactions.forEach((tx,i) => {
-            if( !tx.validateSignature(fctUtil.sha512(this.getMarshalDataSig(i)), this._signature[i]) ) {
+            if( !tx.validateSignature(fctUtil.sha512(this.getMarshalDataSig(i)), this._signature[i], this._rcd[i]) ) {
             throw new Error("Invalid Transaction Signature for input " + i.toString())
         }
         })

@@ -21,5 +21,6 @@ module.exports = Object.assign({},
             TransactionBatchBuilder : require('./2/TransactionBatchBuilder'),
             TransactionBatch : require('./2/TransactionBatch')
         }
+
     }
 );

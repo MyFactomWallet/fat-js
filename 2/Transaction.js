@@ -48,32 +48,36 @@ class Transaction {
      */
     constructor(builder) {
         if (builder instanceof TransactionBuilder) {
-            this._input = builder._input;
-            		
+            this._content = {}
+            this._content.input = builder._input;
+            
             if ( builder._conversion !== undefined ) {
-                this._conversion = builder._conversion;
+                this._content.conversion = builder._conversion;
             }
 
             if ( builder._transfers.length > 0 ) {
-                this._transfers = builder._transfers;
+                this._content.transfers = builder._transfers;
+
             }
 
             if ( builder._metadata !== undefined ) {
-                this._metadata = builder._metadata;
+                this._content.metadata = builder._metadata;
             }
 
-            this._key = builder._key;
-            this._rcd = Buffer.concat([constant.RCD_TYPE_1, Buffer.from(builder._key.publicKey)]);
+            if ( this._key !== undefined ) {
+                this._key = builder._key;
+                this._rcd = Buffer.concat([constant.RCD_TYPE_1, Buffer.from(builder._key.publicKey)]);
+            }
             
         } else { //from object
             if (!builder.data.input) throw new Error("Valid FAT-2 transactions must include input");
             if (!builder.data.conversion) throw new Error("Valid FAT-2 transactions must include conversion");
             if (!builder.data.transfers) throw new Error("Valid FAT-2 transactions must include transaction");
-            this._input = builder.data.input;
-            this._transfers = builder.data.transfers;
-            this._conversion = builder.data.conversion;
+            this._content.input = builder.data.input;
+            this._content.transfers = builder.data.transfers;
+            this._content.conversion = builder.data.conversion;
 
-            this._metadata = builder.data.metadata;
+            this._content.metadata = builder.data.metadata;
 
             this._entryhash = builder.entryhash;
             this._timestamp = builder.timestamp;
@@ -83,13 +87,16 @@ class Transaction {
         Object.freeze(this);
     }
 
+    getContent() {
+        return this._content
+    }
     /**
      * Get the inputs address for the transaction 
      * @method
      * @returns {string} - The transaction input address
      */
     getInput() {
-        return this._input;
+        return this._content.input;
     }
 
     /**
@@ -98,7 +105,7 @@ class Transaction {
      * @returns {string|undefined} - The transaction's output address
      */
     getConversion() {
-        return this._conversion;
+        return this._content.conversion;
     }
     
     /**
@@ -116,7 +123,7 @@ class Transaction {
      * @returns { [{string,number}] | undefined } - The transaction's asset array of transfers
      */
     getTransfers() {
-        return this._transfers;
+        return this._content.transfers;
     }
 
     /**
@@ -125,12 +132,12 @@ class Transaction {
      * @returns {*} - The transaction's metadata (if present, undefined if not)
      */
     getMetadata() {
-        return this._metadata;
+        return this._content.metadata;
     }
 
     sign(hashed) {
         let signature = undefined
-        if ( this._key.secretKey !== undefined ) {
+        if ( this._key !== undefined && this._key.secretKey !== undefined ) {
              signature = nacl.detached(hashed, this._key.secretKey);
         } 
         return signature
@@ -140,12 +147,12 @@ class Transaction {
      * @method
      * @returns {boolean} returns true if signatures are valid, throws error otherwise.
      */
-    validateSignature(hashed, signature) {
-        if ( signature === undefined || this._rcd === undefined ) {
+    validateSignature(hashed, signature, rcd) {
+        if ( signature === undefined || rcd === undefined ) {
             throw new Error("Transaction not signed")
         }
         
-        if( !nacl.detached.verify(hashed, signature, Buffer.from(this._rcd, 1).slice(1)) ) {
+        if( !nacl.detached.verify(hashed, signature, Buffer.from(rcd, 1).slice(1)) ) {
             return false;
         }
         
